@@ -1,0 +1,29 @@
+[
+{
+    "id": "2",
+    "user_id": "29",
+    "user_email": "SSS@test.cz",
+    "start_date": "2024-01-04",
+    "end_date": "2024-02-03",
+    "last_run": "2024-01-04 16:53:33",
+    "last_render_id": null,
+    "last_render_status": null,
+    "total_count": "2",
+    "max_count": "10",
+    "disabled": "0"
+},
+{
+    "id": "554",
+    "user_id": "865",
+    "user_email": "bianka.dzurisova@gmail.com",
+    "start_date": "2024-10-08",
+    "end_date": "2024-11-07",
+    "last_run": "2024-10-08 20:38:12",
+    "last_render_id": "GeMVxBHobYIkG7kM8L9U",
+    "last_render_status": "done",
+    "total_count": "2",
+    "max_count": "10",
+    "disabled": "0"
+}
+]
+
