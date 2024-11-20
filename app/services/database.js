@@ -26,8 +26,12 @@ async function run() {
 run();
 
 export const db = mongoclient.db(dbConfig.database);
+export const userCollection = db.collection("User");
+export const listCollection = db.collection("List") 
+
 export const user_col = db.collection("user");
 export const user_session_col = db.collection("user_session");
 export const oauth_account_col = db.collection("oauth_account");
 
 export default mongoclient;
+

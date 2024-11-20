@@ -1,20 +1,16 @@
 {
   "development": {
     "clientBaseUrl": "http://localhost:8081",
-    "hostBaseUrl": "http://localhost:8080",
+    "hostBaseUrl": "http://localhost:8082",
     "cors": {
-      "origin": [
-        "http://localhost:8081"
-      ]
+      "origin": ["http://localhost:8081"]
     }
   },
   "production": {
     "clientBaseUrl": "http://localhost:8081",
-    "hostBaseUrl": "http://localhost:8080",
+    "hostBaseUrl": "http://localhost:8082",
     "cors": {
-      "origin": [
-        "http://localhost:8081"
-      ]
+      "origin": ["http://localhost:8081"]
     }
   }
 }
