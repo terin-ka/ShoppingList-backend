@@ -7,8 +7,7 @@ import cors from "cors";
 //import googleRoutes from "./app/routes/google.routes.js"; // authorization routes + google oAuth2
 //import adminRoutes from "./app/routes/admin.routes.js"; // admin- pro dashboard
 
-import listRouter from "./app/routes/list.router.js";
-import itemRouter from "./app/routes/item.router.js";
+import listRouter from "./app/routes/list.routes.js";
 
 
 const app = express();
@@ -55,7 +54,6 @@ app.get("/", (_, res) => {
 });
 
 app.use("/list", listRouter);
-app.use("/item", itemRouter);
 
 //app.use("/api/user", userAPIRoutes);
 //app.use("/api/auth", authRoutes);
