@@ -16,7 +16,6 @@ const validateData = (schema) => {
 // Validační schéma pro vytvoření seznamu
 const createListSchema = Joi.object({
   name: Joi.string().min(1).max(50).required(),
-  isArchived: Joi.boolean().default(false),
 });
 
 // Validační schéma pro aktualizaci seznamu
@@ -37,15 +36,13 @@ const deleteMemberSchema = Joi.object({
 // Validační schéma pro vytvoření itemu
 const createItemSchema = Joi.object({
   name: Joi.string().min(1).max(50).required(),
-  count: Joi.number().default(1),
-  resolved: Joi.boolean().default(false),
+  count: Joi.number().required(),
 });
 
 // Validační schéma pro odstranění membera
 const deleteItemSchema = Joi.object({
   itemId: Joi.string().required(),
 });
-
 
 
 export const validateCreateList = validateData(createListSchema);
