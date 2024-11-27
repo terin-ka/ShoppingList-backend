@@ -5,66 +5,48 @@ import mongoclient, {
 import { ObjectId } from "mongodb";
 import { nanoid } from 'nanoid';
 
-async function getRole(listId, userId) {
-  try {
-    if (!listId) {
-      throw new Error("Bad request: Missing list ID");
-    }
-
-    if (!ObjectId.isValid(listId)) {
-      return res.status(400).json({ error: "Invalid list ID" });
-    }
-
-    const shoppingList = await listCollection.findOne({
-      _id: new ObjectId(listId),
-    });
-
-    if (!shoppingList) {
-      throw new Error("List not found");
-    }
-
-    if (shoppingList.owner === userId) {
-      return "owner";
-    } else if (shoppingList.memberList.includes(userId)) {
-      return "member";
-    } else {
-      return "external";
-    }
-  } catch (error) {
-    throw error; // Vyhodí chybu, kterou zachytí getList
+function getRole(list, userId) {
+  if (list.owner === userId) {
+    return "owner";
+  } else if (list.memberList.includes(userId)) {
+    return "member";
   }
+  return "external";
 }
 
-// Vrací informace o listu na základě ID
+// Vrácení konkrétního listu na základě listId
 export async function getList(req, res) {
   const { listId } = req.params;
   const userId = req.userId;
-  if (!ObjectId.isValid(listId)) {
-    return res.status(400).json({ error: "Invalid list ID" });
+
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
   }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+
   try {
     await mongoclient.connect();
-    const role = await getRole(listId, userId);
+
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId)});
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role === "external") {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const list = await listCollection.findOne({ _id: new ObjectId(listId) });
-    if (!list) {
-      return res.status(404).json({ error: "List not found" });
-    }
     res.status(200).json(list);
   } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
-    }
-    return res.status(500).json({ error: "List retrieval failed" });
-  } finally {
-    await mongoclient.close();
+    console.error("Error getting list :", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
-// Vrací potvrzení o vytvoření listu
+// Vytvoření nového listu
 export async function createList(req, res) {
   const { listName } = req.body;
   const userId = req.userId;
@@ -78,43 +60,46 @@ export async function createList(req, res) {
       itemList: [],
     });
 
-    res.status(200).json(list.insertedId);
+    res.status(200).json({listId: list.insertedId});
   } catch (error) {
     return res.status(500).json({ error: "List creation failed" });
-  } finally {
-    await mongoclient.close();
   }
 }
 
-// Vrací potvrzení o smazání listu
+// Smazání listu
 export async function deleteList(req, res) {
   const { listId } = req.params;
   const userId = req.userId;
-  if (!ObjectId.isValid(listId)) {
-    return res.status(400).json({ error: "Invalid list ID" });
+
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
   }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+
   try {
     await mongoclient.connect();
-    const role = await getRole(listId, userId);
+
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role !== "owner") {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const list = await listCollection.deleteOne({
-      _id: new ObjectId(listId),
-    });
-    if (list.deletedCount === 0) {
-      return res.status(404).json({ error: "List not found" });
+    const result = await listCollection.deleteOne({_id: ObjectId.createFromHexString(listId),});
+    if (result.deletedCount === 0) {
+      return res.status(400).json({ error: "Failed to delete list" });
     }
 
-    res.status(200).json(listId);
+    res.status(200).json({listId: listId});
   } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
-    }
-    return res.status(500).json({ error: "List deletion failed" });
-  } finally {
-    await mongoclient.close();
+    console.error("Error deleting list:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -123,29 +108,42 @@ export async function updateList(req, res) {
   const { listId } = req.params;
   const { name } = req.body;
   const userId = req.userId;
-  if (!ObjectId.isValid(listId)) {
-    return res.status(400).json({ error: "Invalid list ID" });
+
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
   }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+
   try {
     await mongoclient.connect();
-    const role = await getRole(listId, userId);
+
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role !== "owner") {
       return res.status(403).json({ error: "Access denied" });
     }
     
-    const list = await listCollection.updateOne(
-      { _id: new ObjectId(listId) },
+    if (list.listName === name) {
+      return res.status(400).json({ error: "No changes were made: The name is already the same" });
+    }
+    const result = await listCollection.updateOne(
+      { _id: ObjectId.createFromHexString(listId) },
       { $set: { listName: name } }
     );
-
-    res.status(200).json(listId);
-  } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
+    if (result.modifiedCount === 0) {
+      return res.status(400).json({ error: "Failed to update list" });
     }
-    return res.status(500).json({ error: "List update failed" });
-  } finally {
-    await mongoclient.close();
+
+    res.status(200).json({ listId: listId, newName: name});
+  } catch (error) {
+    console.error("Error updating list:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -153,33 +151,39 @@ export async function updateList(req, res) {
 export async function toggleArchive(req, res) {
   const { listId } = req.params;
   const userId = req.userId;
-  if (!ObjectId.isValid(listId)) {
-    return res.status(400).json({ error: "Invalid list ID" });
+  
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
   }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+
   try {
     await mongoclient.connect();
-    const role = await getRole(listId, userId);
+
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role !== "owner") {
       return res.status(403).json({ error: "Access denied" });
     }
     
-    const list = await listCollection.findOne({ _id: new ObjectId(listId) });
     const result = await listCollection.updateOne(
-      { _id: new ObjectId(listId) },
+      { _id: ObjectId.createFromHexString(listId) },
       { $set: { isArchived: !list.isArchived } }
     );
-
-    res.status(200).json({
-      message: "List toggled successfully",
-      data: { result },
-    });
-  } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
+    if (result.modifiedCount === 0) {
+      return res.status(400).json({ error: "Failed to toggle list" });
     }
-    return res.status(500).json({ error: "List toggle failed" });
-  } finally {
-    await mongoclient.close();
+
+    res.status(200).json({listId: listId, isArchived: !list.isArchived});
+  } catch (error) {
+    console.error("Error toggle list:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -189,9 +193,16 @@ export async function addMember(req, res) {
   const { memberId } = req.body;
   const userId = req.userId;
 
-  if (!ObjectId.isValid(listId) || !ObjectId.isValid(memberId)) {
-    return res.status(400).json({ error: "Invalid list ID or member ID" });
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
   }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+  if (!ObjectId.isValid(memberId)) {
+    return res.status(400).json({ error: "Bad request: Invalid member ID" });
+  }
+
   let session;
   try {
     // Připojení k MongoDB a zahájení transakce
@@ -199,65 +210,47 @@ export async function addMember(req, res) {
     session = mongoclient.startSession();
     session.startTransaction();
 
-    // Ověření role uživatele
-    const role = await getRole(listId, userId);
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role !== "owner") {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    // Načtení listu a uživatele
-    const list = await listCollection.findOne({ _id: new ObjectId(listId) });
-    if (!list) {
-      throw new Error("List not found");
+    const member = await userCollection.findOne({ _id: ObjectId.createFromHexString(memberId) });
+    if (!member) {
+      return res.status(404).json({ error: "Member not found" });
     }
 
-    const user = await userCollection.findOne({ _id: new ObjectId(memberId) });
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // Kontrola, zda člen už není v memberList
     if (list.memberList.includes(memberId)) {
-      return res
-        .status(400)
-        .json({ error: "Member already exists in the list" });
+      return res.status(400).json({ error: "Member already exists in the list" });
     }
-
-    // Přidání člena do listu
     const listResult = await listCollection.updateOne(
-      { _id: new ObjectId(listId) },
+      { _id: ObjectId.createFromHexString(listId) },
       { $addToSet: { memberList: memberId } },
       { session }
     );
     if (listResult.modifiedCount === 0) {
-      throw new Error("Failed to add member to the list");
+      return res.status(400).json({ error: "Failed to add member to the list" });
     }
 
-    // Přidání listu do seznamu uživatele
-    const userResult = await userCollection.updateOne(
-      { _id: new ObjectId(memberId) },
+    const memberResult = await userCollection.updateOne(
+      { _id: ObjectId.createFromHexString(memberId) },
       { $addToSet: { membershipList: listId } },
       { session }
     );
-    if (userResult.modifiedCount === 0) {
-      throw new Error("Failed to add list to the user's memberships");
+    if (memberResult.modifiedCount === 0) {
+      return res.status(400).json({ error: "Failed to add list to the user's memberships" });
     }
 
-    // Potvrzení transakce
     await session.commitTransaction();
-    res.status(200).json({
-      data: { listId, memberId },
-    });
+    res.status(200).json({listId: listId, memberId: memberId });
   } catch (error) {
     if (session && session.inTransaction()) {
-      // Zrušení transakce při chybě
       await session.abortTransaction();
-    }
-    if (
-      error.message === "List not found" ||
-      error.message === "User not found"
-    ) {
-      return res.status(404).json({ error: error.message });
     }
     console.error("Error adding member:", error);
     res.status(500).json({ error: "Failed to add member" });
@@ -265,7 +258,6 @@ export async function addMember(req, res) {
     if (session) {
       session.endSession();
     }
-    await mongoclient.close();
   }
 }
 
@@ -274,36 +266,43 @@ export async function deleteMember(req, res) {
   const { listId } = req.params;
   const { memberId } = req.body;
   const userId = req.userId;
-  if (!ObjectId.isValid(listId) || !ObjectId.isValid(memberId)) {
-    return res.status(400).json({ error: "Invalid list ID or member ID" });
+  
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
   }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+  if (!ObjectId.isValid(memberId)) {
+    return res.status(400).json({ error: "Bad request: Invalid member ID" });
+  }
+
   let session;
   try {
     await mongoclient.connect();
     session = mongoclient.startSession();
     session.startTransaction();
 
-    const role = await getRole(listId, userId);
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role !== "owner") {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    // Načtení listu a uživatele
-    const list = await listCollection.findOne({ _id: new ObjectId(listId) });
-    if (!list) {
-      throw new Error("List not found");
-    }
-
-    const user = await userCollection.findOne({ _id: new ObjectId(memberId) });
-    if (!user) {
-      throw new Error("User not found");
+    const member = await userCollection.findOne({ _id: ObjectId.createFromHexString(memberId) });
+    if (!member) {
+      return res.status(404).json({ error: "Member not found" });
     }
 
     if (!list.memberList.includes(memberId)) {
       return res.status(400).json({ error: "Member not found in the list" });
     }
     const listResult = await listCollection.updateOne(
-      { _id: new ObjectId(listId) },
+      { _id: ObjectId.createFromHexString(listId) },
       { $pull: { memberList: memberId } },
       { session }
     );
@@ -313,39 +312,27 @@ export async function deleteMember(req, res) {
         .json({ error: "Failed to delete member from the list" });
     }
 
-    const userResult = await userCollection.updateOne(
-      { _id: new ObjectId(memberId) },
+    const memberResult = await userCollection.updateOne(
+      { _id: ObjectId.createFromHexString(memberId) },
       { $pull: { membershipList: listId } },
       { session }
     );
-    if (userResult.modifiedCount === 0) {
-      return res
-        .status(400)
-        .json({ error: "Failed to update user's membership" });
+    if (memberResult.modifiedCount === 0) {
+      return res.status(400).json({ error: "Failed to update user's membership" });
     }
 
-    // Potvrzení transakce
     await session.commitTransaction();
-    res.status(200).json({
-      data: { listId, memberId },
-    });
+    res.status(200).json({listId: listId, memberId: memberId });
   } catch (error) {
     if (session && session.inTransaction()) {
       await session.abortTransaction();
     }
-    if (
-      error.message === "List not found" ||
-      error.message === "User not found"
-    ) {
-      return res.status(404).json({ error: error.message });
-    }
-    console.error("Error adding member:", error);
-    res.status(500).json({ error: "Member deletion failed" });
+    console.error("Error delete member:", error);
+    res.status(500).json({ error: "Failed to delete member" });
   } finally {
     if (session) {
       session.endSession();
     }
-    await mongoclient.close();
   }
 }
 
@@ -354,7 +341,7 @@ export async function leaveList(req, res) {
   const { listId } = req.params;
   const userId = req.userId;
   try {
-    const role = await getRole(listId, userId);
+    const role = getRole(list, userId);
     if (role !== "member") {
       return res.status(403).json({ error: "Access denied" });
     }
@@ -364,9 +351,7 @@ export async function leaveList(req, res) {
       data: { listId, userId },
     });
   } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
-    }
+    console.error("Error leave list:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -377,31 +362,36 @@ export async function createItem(req, res) {
   const { name, count } = req.body;
   const userId = req.userId;
 
-  if (!ObjectId.isValid(listId) || !ObjectId.isValid(memberId)) {
-    return res.status(400).json({ error: "Invalid list ID or member ID" });
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
   }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+
   try {
     await mongoclient.connect();
-    const role = await getRole(listId, userId);
-    if (role === "external") {
-      return res.status(403).json({ error: "Access denied" });
-    }
 
-    const list = await listCollection.findOne({ _id: new ObjectId(listId) });
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
     if (!list) {
       return res.status(404).json({ error: "List not found" });
     }
 
+    const role = getRole(list, userId);
+    if (role === "external") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const newItem = {
-      itemId: nanoid(8), // Generování jedinečného itemId
+      itemId: nanoid(8), // Generování jedinečného itemId pomocí nanoid
       itemName: name,
       count: count,
       resolved: false,
     };
 
     const result = await listCollection.updateOne(
-      { _id: new ObjectId(listId) },
-      { $push: { itemList: newItem } } // Přidání nového itemu
+      { _id: ObjectId.createFromHexString(listId) },
+      { $push: { itemList: newItem } }
     );
     if (result.modifiedCount === 0) {
       return res.status(400).json({ error: "Failed to create item" });
@@ -409,12 +399,8 @@ export async function createItem(req, res) {
 
     res.status(200).json(newItem);
   } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
-    }
-    return res.status(500).json({ error: "Failed to create item" });
-  } finally {
-    await mongoclient.close();
+    console.error("Error create item:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -423,39 +409,39 @@ export async function deleteItem(req, res) {
   const { listId } = req.params;
   const { itemId } = req.body;
   const userId = req.userId;
+  
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
+  }
   if (!ObjectId.isValid(listId)) {
-    return res.status(400).json({ error: "Invalid list ID" });
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
   }
 
   try {
-    const role = await getRole(listId, userId);
-    if (role === "external") {
-      return res.status(403).json({ error: "Access denied" });
-    }
+    await mongoclient.connect(); 
 
-    await mongoclient.connect();
-    const list = await listCollection.findOne({ _id: new ObjectId(listId) });
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
     if (!list) {
       return res.status(404).json({ error: "List not found" });
     }
 
+    const role = getRole(list, userId);
+    if (role === "external") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const result = await listCollection.updateOne(
-      { _id: new ObjectId(listId) },
+      { _id: ObjectId.createFromHexString(listId) },
       { $pull: { itemList: { itemId: itemId } } }
     );
-
     if (result.modifiedCount === 0) {
       return res.status(400).json({ error: "Failed to delete item" });
     }
 
-    res.status(200).json(itemId);
+    res.status(200).json({listId: listId, item: itemId});
   } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
-    }
-    return res.status(500).json({ error: "Failed to delete item" });
-  } finally {
-    await mongoclient.close();
+    console.error("Error delete item:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -465,44 +451,79 @@ export async function toggleResolveItem(req, res) {
   const { itemId } = req.body;
   const userId = req.userId;
 
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
+  }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+
   try {
-    const role = await getRole(listId, userId);
+    await mongoclient.connect(); 
+
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role === "external") {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    res.status(200).json({
-      message: "Item toggled successfully",
-      data: { listId, itemId, userId },
-    });
-  } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
+    const item = list.itemList.find(item => item.itemId === itemId);
+    if (!item) {
+      return res.status(404).json({ error: "Item not found" });
+    }   
+
+    const result = await listCollection.updateOne(
+      { _id: ObjectId.createFromHexString(listId), "itemList.itemId": itemId },
+      { $set: { "itemList.$.resolved": !item.resolved }}
+    );
+    if (result.modifiedCount === 0) {
+      return res.status(400).json({ error: "Failed to toggle item" });
     }
+
+    res.status(200).json({listId: listId});
+  } catch (error) {
+    console.error("Error toggle resolve item:", error);
     return res.status(500).json({ error: "Internal server error" });
-  } finally {
-    await mongoclient.close();
   }
 }
 
+//Vrátí všechny nevyřešené položky
 export async function getUnresolvedItems(req, res) {
   const { listId } = req.params;
   const userId = req.userId;
 
+  if (!listId) {
+    return res.status(400).json({ error: "Bad request: Missing list ID"});
+  }
+  if (!ObjectId.isValid(listId)) {
+    return res.status(400).json({ error: "Bad request: Invalid list ID" });
+  }
+
   try {
-    const role = await getRole(listId, userId);
+    await mongoclient.connect(); 
+
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    if (!list) {
+      return res.status(404).json({ error: "List not found" });
+    }
+
+    const role = getRole(list, userId);
     if (role === "external") {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    res.status(200).json({
-      message: "All unresolved items retrieved successfully",
-      data: { userId, lists: [] },
-    });
-  } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
+    const unresolvedItems = list.itemList.filter(item => item.resolved === false);
+    if (unresolvedItems.length === 0) {
+      return res.status(200).json([]);
     }
+
+    res.status(200).json(unresolvedItems);
+  } catch (error) {
+    console.error("Error get unresolved items:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -510,6 +531,7 @@ export async function getUnresolvedItems(req, res) {
 // Vracení všech aktivních seznamů
 export async function getAllLists(req, res) {
   const userId = req.userId;
+
   try {
     await mongoclient.connect();
     
@@ -520,18 +542,21 @@ export async function getAllLists(req, res) {
       ]
     }).toArray();
 
+    if (lists.length === 0) {
+      return res.status(404).json({ error: "No lists found" });
+    }
+
     res.status(200).json(lists);
   } catch (error) {
-    return res.status(500).json({ error: "Failed to get all lists" });
-
-  } finally {
-    await mongoclient.close();
+    console.error("Error get all lists:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
 // Vracení všech archivovaných seznamů
 export async function getArchivedLists(req, res) {
   const userId = req.userId;
+
   try {
     await mongoclient.connect();
     
@@ -543,14 +568,13 @@ export async function getArchivedLists(req, res) {
       ]
     }).toArray();
 
+    if (lists.length === 0) {
+      return res.status(404).json({ error: "No lists found" });
+    }
+
     res.status(200).json(lists);
   } catch (error) {
-    if (error.message === "List not found") {
-      return res.status(404).json({ error: error.message });
-    }
-    return res.status(500).json({ error: "Failed to get all archived lists" });
-
-  } finally {
-    await mongoclient.close();
+    console.error("Error get archived lists:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
