@@ -1,7 +1,5 @@
 import Joi from "joi";
 
-//VYřEšIT DEFAULT
-
 // Obecná funkce pro validaci dat
 const validateData = (schema) => {
   return (req, res, next) => {
@@ -15,7 +13,7 @@ const validateData = (schema) => {
 
 // Validační schéma pro vytvoření seznamu
 const createListSchema = Joi.object({
-  name: Joi.string().min(1).max(50).required(),
+  listName: Joi.string().min(1).max(50).required(),
 });
 
 // Validační schéma pro aktualizaci seznamu

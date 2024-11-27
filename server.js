@@ -8,6 +8,7 @@ import cors from "cors";
 //import adminRoutes from "./app/routes/admin.routes.js"; // admin- pro dashboard
 
 import listRouter from "./app/routes/list.routes.js";
+import loginRouter from "./app/routes/login.routes.js";
 
 
 const app = express();
@@ -54,6 +55,7 @@ app.get("/", (_, res) => {
 });
 
 app.use("/list", listRouter);
+app.use("/login", loginRouter);
 
 //app.use("/api/user", userAPIRoutes);
 //app.use("/api/auth", authRoutes);

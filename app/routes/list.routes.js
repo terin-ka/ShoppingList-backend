@@ -23,12 +23,9 @@ import {
   getUnresolvedItems,
   getAllLists, 
   getArchivedLists, 
-  getHello,
 } from "../controllers/list.controller.js";
 
 const router = express.Router();
-
-router.get("/", getHello);
 
 router.get("/getList/:listId",authorize(), getList);
 router.post("/create", authorize(), validateCreateList, createList);
