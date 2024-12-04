@@ -1,7 +1,7 @@
 import mongoclient, { userCollection } from "../services/database.js";
 
-// Vracení všech aktivních seznamů
-export async function getAllUsers(req, res) {
+// Vracení všech userů
+export async function getAllUsers(_, res) {
   try {
     await mongoclient.connect();
 
@@ -9,8 +9,7 @@ export async function getAllUsers(req, res) {
 
     res.status(200).json(users);
   } catch (error) {
-    return res.status(500).json({ error: "Failed to get all userss" });
-  } finally {
-    await mongoclient.close();
+    console.error("Error get all users:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
