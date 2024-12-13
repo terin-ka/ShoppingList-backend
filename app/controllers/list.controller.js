@@ -66,7 +66,6 @@ export async function createList(req, res) {
   }
 }
 
-// Smazání listu
 export async function deleteList(req, res) {
   const { listId } = req.params;
   const userId = req.userId;
@@ -78,10 +77,13 @@ export async function deleteList(req, res) {
     return res.status(400).json({ error: "Bad request: Invalid list ID" });
   }
 
+  let session;
   try {
     await mongoclient.connect();
+    session = mongoclient.startSession();
+    session.startTransaction();
 
-    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) });
+    const list = await listCollection.findOne({ _id: ObjectId.createFromHexString(listId) }, {session});
     if (!list) {
       return res.status(404).json({ error: "List not found" });
     }
@@ -91,15 +93,35 @@ export async function deleteList(req, res) {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const result = await listCollection.deleteOne({_id: ObjectId.createFromHexString(listId),});
-    if (result.deletedCount === 0) {
+    const listResult = await listCollection.deleteOne(
+      { _id: ObjectId.createFromHexString(listId) },
+      { session }
+    );
+    if (listResult.deletedCount === 0) {
+      await session.abortTransaction();
       return res.status(400).json({ error: "Failed to delete list" });
     }
 
+    if(role === "member"){
+      const userResult = await userCollection.updateMany(
+        { membershipList: listId },
+        { $pull: { membershipList: listId } },
+        { session }
+      );
+      if (userResult.modifiedCount === 0) {
+        await session.abortTransaction();
+        return res.status(400).json({ error: "Failed to update users" });
+      }
+    }
+
+    await session.commitTransaction();
     res.status(200).json({listId: listId});
   } catch (error) {
-    console.error("Error deleting list:", error);
-    return res.status(500).json({ error: "Internal server error" });
+      if (session) await session.abortTransaction();
+      console.error("Error deleting list:", error);
+      return res.status(500).json({ error: "Internal server error" });
+  } finally {
+      if (session) session.endSession();
   }
 }
 
@@ -542,10 +564,6 @@ export async function getAllLists(req, res) {
       ]
     }).toArray();
 
-    if (lists.length === 0) {
-      return res.status(404).json({ error: "No lists found" });
-    }
-
     res.status(200).json(lists);
   } catch (error) {
     console.error("Error get all lists:", error);
@@ -567,10 +585,6 @@ export async function getArchivedLists(req, res) {
         { memberList: userId } 
       ]
     }).toArray();
-
-    if (lists.length === 0) {
-      return res.status(404).json({ error: "No lists found" });
-    }
 
     res.status(200).json(lists);
   } catch (error) {
