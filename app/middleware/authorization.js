@@ -7,7 +7,7 @@ export function authorize() {
       const { user_id } = req.headers;
 
       if (!user_id || typeof user_id !== "string" || !ObjectId.isValid(user_id)) {
-        return res.status(400).json({ error: "Missing or invalid user ID" });
+        return res.status(400).json({message: "Missing or invalid user ID"});
       }
 
       await mongoclient.connect();
@@ -15,14 +15,14 @@ export function authorize() {
       const user = await userCollection.findOne({ _id: new ObjectId(user_id) });
 
       if (!user) {
-        return res.status(401).json({ error: "User not found" });
+        return res.status(401).send("User not found");
       }
 
       req.userId = user_id;
       next();
     } catch (err) {
       console.error("Authorization error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ message: "Internal server error" });
     }
   };
 }

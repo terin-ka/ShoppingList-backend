@@ -5,7 +5,7 @@ const validateData = (schema) => {
   return (req, res, next) => {
     const { error } = schema.validate(req.body);
     if (error) {
-      return res.status(400).json({ error: error.details[0].message });
+      return res.status(400).json({ message: error.details[0].message });
     }
     next();
   };
@@ -18,7 +18,7 @@ const createListSchema = Joi.object({
 
 // Validační schéma pro aktualizaci seznamu
 const updateListSchema = Joi.object({
-  name: Joi.string().min(1).max(50).required(),
+  listName: Joi.string().min(1).max(50).required(),
 });
 
 // Validační schéma pro přidání membera
